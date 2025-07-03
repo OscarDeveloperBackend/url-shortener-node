@@ -1,6 +1,8 @@
 const url_json = require("../json/urls.json");
 const fs = require("fs");
 const path = require("path");
+const https = require("node:https");
+const http = require("node:http");
 function generarCodigo(tamaño) {
   const caracteres =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -13,12 +15,26 @@ function generarCodigo(tamaño) {
 
   return resultado;
 }
+
+function urlExists(url) {
+  return new Promise((resolve) => {
+    const lib = url.startsWith("https") ? https : http;
+
+    const req = lib.request(url, { method: "HEAD" }, (res) => {
+      resolve(res.statusCode >= 200 && res.statusCode < 400);
+    });
+
+    req.on("error", () => resolve(false));
+    req.end();
+  });
+}
+
 const getData = (req, res) => {
   try {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(url_json));
   } catch (error) {
-    res.writeHead(400, { "Content-Type": "application/json" });
+    res.writeHead(500, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ message: error.message }));
   }
 };
@@ -33,13 +49,13 @@ const redirectUrl = (req, res) => {
       res.writeHead(301, { Location: url_redirect });
       res.end();
     } else {
-      res.writeHead(400, { "Content-Type": "application/json" });
+      res.writeHead(404, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({ message: `Url recoratda: ${url}  es incorecta` })
       );
     }
   } catch (error) {
-    res.writeHead(400, { "Content-Type": "application/json" });
+    res.writeHead(500, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ message: error.message }));
   }
 };
@@ -49,9 +65,17 @@ const postUrl = (req, res) => {
   req.on("data", (chunk) => {
     body += chunk.toString();
   });
-  req.on("end", () => {
+  req.on("end", async () => {
     try {
       const { url_base } = JSON.parse(body);
+
+      const exists = await urlExists(url_base);
+
+      if (!exists) {
+        return res
+          .writeHead(404, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "La URL proporcionada no existe." }));
+      }
 
       const m_url = url_json.find((u) => u.url_base === url_base);
 
@@ -87,7 +111,7 @@ const postUrl = (req, res) => {
                 JSON.stringify({ message: "Ubo un error al guardar los datos" })
               );
             } else {
-              res.writeHead(200, { "Content-Type": "application/json" });
+              res.writeHead(201, { "Content-Type": "application/json" });
               res.end(
                 JSON.stringify({
                   url_recortada: `http://localhost:3000/redict/${url_recortada}`,
@@ -98,7 +122,7 @@ const postUrl = (req, res) => {
         );
       }
     } catch (error) {
-      res.writeHead(400, { "Content-Type": "application/json" });
+      res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ message: error.message }));
     }
   });
